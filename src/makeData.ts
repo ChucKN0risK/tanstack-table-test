@@ -1,7 +1,7 @@
 import { faker } from "@faker-js/faker";
 
 export type Person = {
-  userId: string;
+  id: number;
   firstName: string;
   lastName: string;
   age: number;
@@ -19,9 +19,9 @@ const range = (len: number) => {
   return arr;
 };
 
-const newPerson = (): Person => {
+const newPerson = (num: number): Person => {
   return {
-    userId: faker.string.uuid(),
+    id: num,
     firstName: faker.person.firstName(),
     lastName: faker.person.lastName(),
     age: faker.number.int(40),
@@ -38,9 +38,9 @@ const newPerson = (): Person => {
 export function makeData(...lens: number[]) {
   const makeDataLevel = (depth = 0): Person[] => {
     const len = lens[depth]!;
-    return range(len).map((_d): Person => {
+    return range(len).map((index): Person => {
       return {
-        ...newPerson(),
+        ...newPerson(index),
         subRows: lens[depth + 1] ? makeDataLevel(depth + 1) : undefined,
       };
     });
