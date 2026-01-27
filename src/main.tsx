@@ -1,109 +1,135 @@
-import React from "react";
+import React, { HTMLAttributes, HTMLProps } from "react";
 import ReactDOM from "react-dom/client";
 
 import "./index.css";
 
+import { makeData, Person } from "./makeData";
+
 import {
   Column,
   ColumnDef,
-  ColumnFiltersState,
-  RowData,
   flexRender,
   getCoreRowModel,
   getFilteredRowModel,
   getPaginationRowModel,
-  getSortedRowModel,
+  Table,
   useReactTable,
 } from "@tanstack/react-table";
-
-import { makeData, Person } from "./makeData";
-
-declare module "@tanstack/react-table" {
-  //allows us to define custom properties for our columns
-  interface ColumnMeta<TData extends RowData, TValue> {
-    filterVariant?: "text" | "range" | "select";
-  }
-}
 
 function App() {
   const rerender = React.useReducer(() => ({}), {})[1];
 
-  const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>(
-    [],
-  );
+  const [rowSelection, setRowSelection] = React.useState({});
+  const [globalFilter, setGlobalFilter] = React.useState("");
 
-  const columns = React.useMemo<ColumnDef<Person, any>[]>(
+  const columns = React.useMemo<ColumnDef<Person>[]>(
     () => [
       {
-        accessorKey: "firstName",
-        cell: (info) => info.getValue(),
+        id: "select",
+        header: ({ table }) => (
+          <IndeterminateCheckbox
+            {...{
+              checked: table.getIsAllRowsSelected(),
+              indeterminate: table.getIsSomeRowsSelected(),
+              onChange: table.getToggleAllRowsSelectedHandler(),
+            }}
+          />
+        ),
+        cell: ({ row }) => (
+          <div className="px-1">
+            <IndeterminateCheckbox
+              {...{
+                checked: row.getIsSelected(),
+                disabled: !row.getCanSelect(),
+                indeterminate: row.getIsSomeSelected(),
+                onChange: row.getToggleSelectedHandler(),
+              }}
+            />
+          </div>
+        ),
       },
       {
-        accessorFn: (row) => row.lastName,
-        id: "lastName",
-        cell: (info) => info.getValue(),
-        header: () => <span>Last Name</span>,
+        header: "Name",
+        footer: (props) => props.column.id,
+        columns: [
+          {
+            accessorKey: "firstName",
+            cell: (info) => info.getValue(),
+            footer: (props) => props.column.id,
+          },
+          {
+            accessorFn: (row) => row.lastName,
+            id: "lastName",
+            cell: (info) => info.getValue(),
+            header: () => <span>Last Name</span>,
+            footer: (props) => props.column.id,
+          },
+        ],
       },
       {
-        accessorFn: (row) => `${row.firstName} ${row.lastName}`,
-        id: "fullName",
-        header: "Full Name",
-        cell: (info) => info.getValue(),
-      },
-      {
-        accessorKey: "age",
-        header: () => "Age",
-        meta: {
-          filterVariant: "range",
-        },
-      },
-      {
-        accessorKey: "visits",
-        header: () => <span>Visits</span>,
-        meta: {
-          filterVariant: "range",
-        },
-      },
-      {
-        accessorKey: "status",
-        header: "Status",
-        meta: {
-          filterVariant: "select",
-        },
-      },
-      {
-        accessorKey: "progress",
-        header: "Profile Progress",
-        meta: {
-          filterVariant: "range",
-        },
+        header: "Info",
+        footer: (props) => props.column.id,
+        columns: [
+          {
+            accessorKey: "age",
+            header: () => "Age",
+            footer: (props) => props.column.id,
+          },
+          {
+            header: "More Info",
+            columns: [
+              {
+                accessorKey: "visits",
+                header: () => <span>Visits</span>,
+                footer: (props) => props.column.id,
+              },
+              {
+                accessorKey: "status",
+                header: "Status",
+                footer: (props) => props.column.id,
+              },
+              {
+                accessorKey: "progress",
+                header: "Profile Progress",
+                footer: (props) => props.column.id,
+              },
+            ],
+          },
+        ],
       },
     ],
     [],
   );
 
-  const [data, setData] = React.useState<Person[]>(() => makeData(5_000));
-  const refreshData = () => setData((_old) => makeData(50_000)); //stress test
+  const [data, setData] = React.useState(() => makeData(100000));
+  const refreshData = () => setData(() => makeData(100000));
 
   const table = useReactTable({
     data,
     columns,
-    filterFns: {},
     state: {
-      columnFilters,
+      rowSelection,
     },
-    onColumnFiltersChange: setColumnFilters,
+    enableRowSelection: true, //enable row selection for all rows
+    // enableRowSelection: row => row.original.age > 18, // or enable row selection conditionally per row
+    onRowSelectionChange: setRowSelection,
     getCoreRowModel: getCoreRowModel(),
-    getFilteredRowModel: getFilteredRowModel(), //client side filtering
-    getSortedRowModel: getSortedRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
     debugTable: true,
-    debugHeaders: true,
-    debugColumns: false,
   });
 
   return (
     <div className="p-2">
+      <div>
+        <input
+          value={globalFilter ?? ""}
+          onChange={(e) => setGlobalFilter(e.target.value)}
+          className="p-2 font-lg shadow border border-block"
+          placeholder="Search all columns..."
+        />
+      </div>
+      <div className="h-2" />
       <table>
         <thead>
           {table.getHeaderGroups().map((headerGroup) => (
@@ -113,26 +139,13 @@ function App() {
                   <th key={header.id} colSpan={header.colSpan}>
                     {header.isPlaceholder ? null : (
                       <>
-                        <div
-                          {...{
-                            className: header.column.getCanSort()
-                              ? "cursor-pointer select-none"
-                              : "",
-                            onClick: header.column.getToggleSortingHandler(),
-                          }}
-                        >
-                          {flexRender(
-                            header.column.columnDef.header,
-                            header.getContext(),
-                          )}
-                          {{
-                            asc: " 🔼",
-                            desc: " 🔽",
-                          }[header.column.getIsSorted() as string] ?? null}
-                        </div>
+                        {flexRender(
+                          header.column.columnDef.header,
+                          header.getContext(),
+                        )}
                         {header.column.getCanFilter() ? (
                           <div>
-                            <Filter column={header.column} />
+                            <Filter column={header.column} table={table} />
                           </div>
                         ) : null}
                       </>
@@ -161,6 +174,20 @@ function App() {
             );
           })}
         </tbody>
+        <tfoot>
+          <tr>
+            <td className="p-1">
+              <IndeterminateCheckbox
+                {...{
+                  checked: table.getIsAllPageRowsSelected(),
+                  indeterminate: table.getIsSomePageRowsSelected(),
+                  onChange: table.getToggleAllPageRowsSelectedHandler(),
+                }}
+              />
+            </td>
+            <td colSpan={20}>Page Rows ({table.getRowModel().rows.length})</td>
+          </tr>
+        </tfoot>
       </table>
       <div className="h-2" />
       <div className="flex items-center gap-2">
@@ -226,106 +253,109 @@ function App() {
           ))}
         </select>
       </div>
-      <div>{table.getPrePaginationRowModel().rows.length} Rows</div>
+      <br />
       <div>
-        <button onClick={() => rerender()}>Force Rerender</button>
+        {Object.keys(rowSelection).length} of{" "}
+        {table.getPreFilteredRowModel().rows.length} Total Rows Selected
+      </div>
+      <hr />
+      <br />
+      <div>
+        <button className="border rounded p-2 mb-2" onClick={() => rerender()}>
+          Force Rerender
+        </button>
       </div>
       <div>
-        <button onClick={() => refreshData()}>Refresh Data</button>
+        <button
+          className="border rounded p-2 mb-2"
+          onClick={() => refreshData()}
+        >
+          Refresh Data
+        </button>
       </div>
-      <pre>
-        {JSON.stringify(
-          { columnFilters: table.getState().columnFilters },
-          null,
-          2,
-        )}
-      </pre>
+      <div>
+        <button
+          className="border rounded p-2 mb-2"
+          onClick={() =>
+            console.info(
+              "table.getSelectedRowModel().flatRows",
+              table.getSelectedRowModel().flatRows,
+            )
+          }
+        >
+          Log table.getSelectedRowModel().flatRows
+        </button>
+      </div>
+      <div>
+        <label>Row Selection State:</label>
+        <pre>{JSON.stringify(table.getState().rowSelection, null, 2)}</pre>
+      </div>
     </div>
   );
 }
 
-function Filter({ column }: { column: Column<any, unknown> }) {
-  const columnFilterValue = column.getFilterValue();
-  const { filterVariant } = column.columnDef.meta ?? {};
-
-  return filterVariant === "range" ? (
-    <div>
-      <div className="flex space-x-2">
-        {/* See faceted column filters example for min max values functionality */}
-        <DebouncedInput
-          type="number"
-          value={(columnFilterValue as [number, number])?.[0] ?? ""}
-          onChange={(value) =>
-            column.setFilterValue((old: [number, number]) => [value, old?.[1]])
-          }
-          placeholder={`Min`}
-          className="w-24 border shadow rounded"
-        />
-        <DebouncedInput
-          type="number"
-          value={(columnFilterValue as [number, number])?.[1] ?? ""}
-          onChange={(value) =>
-            column.setFilterValue((old: [number, number]) => [old?.[0], value])
-          }
-          placeholder={`Max`}
-          className="w-24 border shadow rounded"
-        />
-      </div>
-      <div className="h-1" />
-    </div>
-  ) : filterVariant === "select" ? (
-    <select
-      onChange={(e) => column.setFilterValue(e.target.value)}
-      value={columnFilterValue?.toString()}
-    >
-      {/* See faceted column filters example for dynamic select options */}
-      <option value="">All</option>
-      <option value="complicated">complicated</option>
-      <option value="relationship">relationship</option>
-      <option value="single">single</option>
-    </select>
-  ) : (
-    <DebouncedInput
-      className="w-36 border shadow rounded"
-      onChange={(value) => column.setFilterValue(value)}
-      placeholder={`Search...`}
-      type="text"
-      value={(columnFilterValue ?? "") as string}
-    />
-    // See faceted column filters example for datalist search suggestions
-  );
-}
-
-// A typical debounced input react component
-function DebouncedInput({
-  value: initialValue,
-  onChange,
-  debounce = 500,
-  ...props
+function Filter({
+  column,
+  table,
 }: {
-  value: string | number;
-  onChange: (value: string | number) => void;
-  debounce?: number;
-} & Omit<React.InputHTMLAttributes<HTMLInputElement>, "onChange">) {
-  const [value, setValue] = React.useState(initialValue);
+  column: Column<any, any>;
+  table: Table<any>;
+}) {
+  const firstValue = table
+    .getPreFilteredRowModel()
+    .flatRows[0]?.getValue(column.id);
+
+  return typeof firstValue === "number" ? (
+    <div className="flex space-x-2">
+      <input
+        type="number"
+        value={((column.getFilterValue() as any)?.[0] ?? "") as string}
+        onChange={(e) =>
+          column.setFilterValue((old: any) => [e.target.value, old?.[1]])
+        }
+        placeholder={`Min`}
+        className="w-24 border shadow rounded"
+      />
+      <input
+        type="number"
+        value={((column.getFilterValue() as any)?.[1] ?? "") as string}
+        onChange={(e) =>
+          column.setFilterValue((old: any) => [old?.[0], e.target.value])
+        }
+        placeholder={`Max`}
+        className="w-24 border shadow rounded"
+      />
+    </div>
+  ) : (
+    <input
+      type="text"
+      value={(column.getFilterValue() ?? "") as string}
+      onChange={(e) => column.setFilterValue(e.target.value)}
+      placeholder={`Search...`}
+      className="w-36 border shadow rounded"
+    />
+  );
+}
+
+function IndeterminateCheckbox({
+  indeterminate,
+  className = "",
+  ...rest
+}: { indeterminate?: boolean } & HTMLProps<HTMLInputElement>) {
+  const ref = React.useRef<HTMLInputElement>(null!);
 
   React.useEffect(() => {
-    setValue(initialValue);
-  }, [initialValue]);
-
-  React.useEffect(() => {
-    const timeout = setTimeout(() => {
-      onChange(value);
-    }, debounce);
-
-    return () => clearTimeout(timeout);
-  }, [value]);
+    if (typeof indeterminate === "boolean") {
+      ref.current.indeterminate = !rest.checked && indeterminate;
+    }
+  }, [ref, indeterminate]);
 
   return (
     <input
-      {...props}
-      value={value}
-      onChange={(e) => setValue(e.target.value)}
+      type="checkbox"
+      ref={ref}
+      className={className + " cursor-pointer"}
+      {...rest}
     />
   );
 }
