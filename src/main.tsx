@@ -1,39 +1,89 @@
-import React from "react";
+import React, { CSSProperties } from "react";
 import ReactDOM from "react-dom/client";
 
 import "./index.css";
 
 import {
-  Column,
   ColumnDef,
-  ColumnFiltersState,
-  RowData,
+  Row,
   flexRender,
   getCoreRowModel,
-  getFilteredRowModel,
-  getPaginationRowModel,
-  getSortedRowModel,
   useReactTable,
 } from "@tanstack/react-table";
-
 import { makeData, Person } from "./makeData";
 
-declare module "@tanstack/react-table" {
-  //allows us to define custom properties for our columns
-  interface ColumnMeta<TData extends RowData, TValue> {
-    filterVariant?: "text" | "range" | "select";
-  }
-}
+// needed for table body level scope DnD setup
+import {
+  DndContext,
+  KeyboardSensor,
+  MouseSensor,
+  TouchSensor,
+  closestCenter,
+  type DragEndEvent,
+  type UniqueIdentifier,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import { restrictToVerticalAxis } from "@dnd-kit/modifiers";
+import {
+  arrayMove,
+  SortableContext,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
 
-function App() {
-  const rerender = React.useReducer(() => ({}), {})[1];
+// needed for row & cell level scope DnD setup
+import { useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
-  const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>(
-    [],
+// Cell Component
+const RowDragHandleCell = ({ rowId }: { rowId: string }) => {
+  const { attributes, listeners } = useSortable({
+    id: rowId,
+  });
+  return (
+    // Alternatively, you could set these attributes on the rows themselves
+    <button {...attributes} {...listeners}>
+      🟰
+    </button>
   );
+};
 
-  const columns = React.useMemo<ColumnDef<Person, any>[]>(
+// Row Component
+const DraggableRow = ({ row }: { row: Row<Person> }) => {
+  const { transform, transition, setNodeRef, isDragging } = useSortable({
+    id: row.original.userId,
+  });
+
+  const style: CSSProperties = {
+    transform: CSS.Transform.toString(transform), //let dnd-kit do its thing
+    transition: transition,
+    opacity: isDragging ? 0.8 : 1,
+    zIndex: isDragging ? 1 : 0,
+    position: "relative",
+  };
+  return (
+    // connect row ref to dnd-kit, apply important styles
+    <tr ref={setNodeRef} style={style}>
+      {row.getVisibleCells().map((cell) => (
+        <td key={cell.id} style={{ width: cell.column.getSize() }}>
+          {flexRender(cell.column.columnDef.cell, cell.getContext())}
+        </td>
+      ))}
+    </tr>
+  );
+};
+
+// Table Component
+function App() {
+  const columns = React.useMemo<ColumnDef<Person>[]>(
     () => [
+      // Create a dedicated drag handle column. Alternatively, you could just set up dnd events on the rows themselves.
+      {
+        id: "drag-handle",
+        header: "Move",
+        cell: ({ row }) => <RowDragHandleCell rowId={row.id} />,
+        size: 60,
+      },
       {
         accessorKey: "firstName",
         cell: (info) => info.getValue(),
@@ -45,288 +95,108 @@ function App() {
         header: () => <span>Last Name</span>,
       },
       {
-        accessorFn: (row) => `${row.firstName} ${row.lastName}`,
-        id: "fullName",
-        header: "Full Name",
-        cell: (info) => info.getValue(),
-      },
-      {
         accessorKey: "age",
         header: () => "Age",
-        meta: {
-          filterVariant: "range",
-        },
       },
       {
         accessorKey: "visits",
         header: () => <span>Visits</span>,
-        meta: {
-          filterVariant: "range",
-        },
       },
       {
         accessorKey: "status",
         header: "Status",
-        meta: {
-          filterVariant: "select",
-        },
       },
       {
         accessorKey: "progress",
         header: "Profile Progress",
-        meta: {
-          filterVariant: "range",
-        },
       },
     ],
     [],
   );
+  const [data, setData] = React.useState(() => makeData(20));
 
-  const [data, setData] = React.useState<Person[]>(() => makeData(5_000));
-  const refreshData = () => setData((_old) => makeData(50_000)); //stress test
+  const dataIds = React.useMemo<UniqueIdentifier[]>(
+    () => data?.map(({ userId }) => userId),
+    [data],
+  );
+
+  const rerender = () => setData(() => makeData(20));
 
   const table = useReactTable({
     data,
     columns,
-    filterFns: {},
-    state: {
-      columnFilters,
-    },
-    onColumnFiltersChange: setColumnFilters,
     getCoreRowModel: getCoreRowModel(),
-    getFilteredRowModel: getFilteredRowModel(), //client side filtering
-    getSortedRowModel: getSortedRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
+    getRowId: (row) => row.userId, //required because row indexes will change
     debugTable: true,
     debugHeaders: true,
-    debugColumns: false,
+    debugColumns: true,
   });
 
-  return (
-    <div className="p-2">
-      <table>
-        <thead>
-          {table.getHeaderGroups().map((headerGroup) => (
-            <tr key={headerGroup.id}>
-              {headerGroup.headers.map((header) => {
-                return (
-                  <th key={header.id} colSpan={header.colSpan}>
-                    {header.isPlaceholder ? null : (
-                      <>
-                        <div
-                          {...{
-                            className: header.column.getCanSort()
-                              ? "cursor-pointer select-none"
-                              : "",
-                            onClick: header.column.getToggleSortingHandler(),
-                          }}
-                        >
-                          {flexRender(
-                            header.column.columnDef.header,
-                            header.getContext(),
-                          )}
-                          {{
-                            asc: " 🔼",
-                            desc: " 🔽",
-                          }[header.column.getIsSorted() as string] ?? null}
-                        </div>
-                        {header.column.getCanFilter() ? (
-                          <div>
-                            <Filter column={header.column} />
-                          </div>
-                        ) : null}
-                      </>
-                    )}
-                  </th>
-                );
-              })}
-            </tr>
-          ))}
-        </thead>
-        <tbody>
-          {table.getRowModel().rows.map((row) => {
-            return (
-              <tr key={row.id}>
-                {row.getVisibleCells().map((cell) => {
-                  return (
-                    <td key={cell.id}>
-                      {flexRender(
-                        cell.column.columnDef.cell,
-                        cell.getContext(),
-                      )}
-                    </td>
-                  );
-                })}
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-      <div className="h-2" />
-      <div className="flex items-center gap-2">
-        <button
-          className="border rounded p-1"
-          onClick={() => table.setPageIndex(0)}
-          disabled={!table.getCanPreviousPage()}
-        >
-          {"<<"}
-        </button>
-        <button
-          className="border rounded p-1"
-          onClick={() => table.previousPage()}
-          disabled={!table.getCanPreviousPage()}
-        >
-          {"<"}
-        </button>
-        <button
-          className="border rounded p-1"
-          onClick={() => table.nextPage()}
-          disabled={!table.getCanNextPage()}
-        >
-          {">"}
-        </button>
-        <button
-          className="border rounded p-1"
-          onClick={() => table.setPageIndex(table.getPageCount() - 1)}
-          disabled={!table.getCanNextPage()}
-        >
-          {">>"}
-        </button>
-        <span className="flex items-center gap-1">
-          <div>Page</div>
-          <strong>
-            {table.getState().pagination.pageIndex + 1} of{" "}
-            {table.getPageCount()}
-          </strong>
-        </span>
-        <span className="flex items-center gap-1">
-          | Go to page:
-          <input
-            type="number"
-            min="1"
-            max={table.getPageCount()}
-            defaultValue={table.getState().pagination.pageIndex + 1}
-            onChange={(e) => {
-              const page = e.target.value ? Number(e.target.value) - 1 : 0;
-              table.setPageIndex(page);
-            }}
-            className="border p-1 rounded w-16"
-          />
-        </span>
-        <select
-          value={table.getState().pagination.pageSize}
-          onChange={(e) => {
-            table.setPageSize(Number(e.target.value));
-          }}
-        >
-          {[10, 20, 30, 40, 50].map((pageSize) => (
-            <option key={pageSize} value={pageSize}>
-              Show {pageSize}
-            </option>
-          ))}
-        </select>
-      </div>
-      <div>{table.getPrePaginationRowModel().rows.length} Rows</div>
-      <div>
-        <button onClick={() => rerender()}>Force Rerender</button>
-      </div>
-      <div>
-        <button onClick={() => refreshData()}>Refresh Data</button>
-      </div>
-      <pre>
-        {JSON.stringify(
-          { columnFilters: table.getState().columnFilters },
-          null,
-          2,
-        )}
-      </pre>
-    </div>
+  // reorder rows after drag & drop
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (active && over && active.id !== over.id) {
+      setData((data) => {
+        const oldIndex = dataIds.indexOf(active.id);
+        const newIndex = dataIds.indexOf(over.id);
+        return arrayMove(data, oldIndex, newIndex); //this is just a splice util
+      });
+    }
+  }
+
+  const sensors = useSensors(
+    useSensor(MouseSensor, {}),
+    useSensor(TouchSensor, {}),
+    useSensor(KeyboardSensor, {}),
   );
-}
 
-function Filter({ column }: { column: Column<any, unknown> }) {
-  const columnFilterValue = column.getFilterValue();
-  const { filterVariant } = column.columnDef.meta ?? {};
-
-  return filterVariant === "range" ? (
-    <div>
-      <div className="flex space-x-2">
-        {/* See faceted column filters example for min max values functionality */}
-        <DebouncedInput
-          type="number"
-          value={(columnFilterValue as [number, number])?.[0] ?? ""}
-          onChange={(value) =>
-            column.setFilterValue((old: [number, number]) => [value, old?.[1]])
-          }
-          placeholder={`Min`}
-          className="w-24 border shadow rounded"
-        />
-        <DebouncedInput
-          type="number"
-          value={(columnFilterValue as [number, number])?.[1] ?? ""}
-          onChange={(value) =>
-            column.setFilterValue((old: [number, number]) => [old?.[0], value])
-          }
-          placeholder={`Max`}
-          className="w-24 border shadow rounded"
-        />
-      </div>
-      <div className="h-1" />
-    </div>
-  ) : filterVariant === "select" ? (
-    <select
-      onChange={(e) => column.setFilterValue(e.target.value)}
-      value={columnFilterValue?.toString()}
+  return (
+    // NOTE: This provider creates div elements, so don't nest inside of <table> elements
+    <DndContext
+      collisionDetection={closestCenter}
+      modifiers={[restrictToVerticalAxis]}
+      onDragEnd={handleDragEnd}
+      sensors={sensors}
     >
-      {/* See faceted column filters example for dynamic select options */}
-      <option value="">All</option>
-      <option value="complicated">complicated</option>
-      <option value="relationship">relationship</option>
-      <option value="single">single</option>
-    </select>
-  ) : (
-    <DebouncedInput
-      className="w-36 border shadow rounded"
-      onChange={(value) => column.setFilterValue(value)}
-      placeholder={`Search...`}
-      type="text"
-      value={(columnFilterValue ?? "") as string}
-    />
-    // See faceted column filters example for datalist search suggestions
-  );
-}
-
-// A typical debounced input react component
-function DebouncedInput({
-  value: initialValue,
-  onChange,
-  debounce = 500,
-  ...props
-}: {
-  value: string | number;
-  onChange: (value: string | number) => void;
-  debounce?: number;
-} & Omit<React.InputHTMLAttributes<HTMLInputElement>, "onChange">) {
-  const [value, setValue] = React.useState(initialValue);
-
-  React.useEffect(() => {
-    setValue(initialValue);
-  }, [initialValue]);
-
-  React.useEffect(() => {
-    const timeout = setTimeout(() => {
-      onChange(value);
-    }, debounce);
-
-    return () => clearTimeout(timeout);
-  }, [value]);
-
-  return (
-    <input
-      {...props}
-      value={value}
-      onChange={(e) => setValue(e.target.value)}
-    />
+      <div className="p-2">
+        <div className="h-4" />
+        <div className="flex flex-wrap gap-2">
+          <button onClick={() => rerender()} className="border p-1">
+            Regenerate
+          </button>
+        </div>
+        <div className="h-4" />
+        <table>
+          <thead>
+            {table.getHeaderGroups().map((headerGroup) => (
+              <tr key={headerGroup.id}>
+                {headerGroup.headers.map((header) => (
+                  <th key={header.id} colSpan={header.colSpan}>
+                    {header.isPlaceholder
+                      ? null
+                      : flexRender(
+                          header.column.columnDef.header,
+                          header.getContext(),
+                        )}
+                  </th>
+                ))}
+              </tr>
+            ))}
+          </thead>
+          <tbody>
+            <SortableContext
+              items={dataIds}
+              strategy={verticalListSortingStrategy}
+            >
+              {table.getRowModel().rows.map((row) => (
+                <DraggableRow key={row.id} row={row} />
+              ))}
+            </SortableContext>
+          </tbody>
+        </table>
+        <pre>{JSON.stringify(data, null, 2)}</pre>
+      </div>
+    </DndContext>
   );
 }
 
