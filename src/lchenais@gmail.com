@@ -4,17 +4,17 @@ import ReactDOM from "react-dom/client";
 import "./index.css";
 
 import {
-  GroupingState,
+  type GroupingState,
   useReactTable,
   getPaginationRowModel,
   getFilteredRowModel,
   getCoreRowModel,
   getGroupedRowModel,
   getExpandedRowModel,
-  ColumnDef,
+  type ColumnDef,
   flexRender,
 } from "@tanstack/react-table";
-import { makeData, Person } from "./makeData";
+import { makeData, type Person } from "./makeData";
 
 function App() {
   const rerender = React.useReducer(() => ({}), {})[1];
@@ -69,10 +69,10 @@ function App() {
                 accessorKey: "progress",
                 header: "Profile Progress",
                 cell: ({ getValue }) =>
-                  Math.round(getValue<number>() * 100) / 100 + "%",
+                  `${Math.round(getValue<number>() * 100) / 100}%`,
                 aggregationFn: "mean",
                 aggregatedCell: ({ getValue }) =>
-                  Math.round(getValue<number>() * 100) / 100 + "%",
+                  `${Math.round(getValue<number>() * 100) / 100}%`,
               },
             ],
           },
@@ -161,25 +161,21 @@ function App() {
                     >
                       {cell.getIsGrouped() ? (
                         // If it's a grouped cell, add an expander and row count
-                        <>
-                          <button
-                            {...{
-                              onClick: row.getToggleExpandedHandler(),
-                              style: {
-                                cursor: row.getCanExpand()
-                                  ? "pointer"
-                                  : "normal",
-                              },
-                            }}
-                          >
-                            {row.getIsExpanded() ? "👇" : "👉"}{" "}
-                            {flexRender(
-                              cell.column.columnDef.cell,
-                              cell.getContext(),
-                            )}{" "}
-                            ({row.subRows.length})
-                          </button>
-                        </>
+                        <button
+                          {...{
+                            onClick: row.getToggleExpandedHandler(),
+                            style: {
+                              cursor: row.getCanExpand() ? "pointer" : "normal",
+                            },
+                          }}
+                        >
+                          {row.getIsExpanded() ? "👇" : "👉"}{" "}
+                          {flexRender(
+                            cell.column.columnDef.cell,
+                            cell.getContext(),
+                          )}{" "}
+                          ({row.subRows.length})
+                        </button>
                       ) : cell.getIsAggregated() ? (
                         // If the cell is aggregated, use the Aggregated
                         // renderer for cell
@@ -206,6 +202,7 @@ function App() {
       <div className="h-2" />
       <div className="flex items-center gap-2">
         <button
+          type="button"
           className="border rounded p-1"
           onClick={() => table.setPageIndex(0)}
           disabled={!table.getCanPreviousPage()}
@@ -213,6 +210,7 @@ function App() {
           {"<<"}
         </button>
         <button
+          type="button"
           className="border rounded p-1"
           onClick={() => table.previousPage()}
           disabled={!table.getCanPreviousPage()}
@@ -220,6 +218,7 @@ function App() {
           {"<"}
         </button>
         <button
+          type="button"
           className="border rounded p-1"
           onClick={() => table.nextPage()}
           disabled={!table.getCanNextPage()}
@@ -227,6 +226,7 @@ function App() {
           {">"}
         </button>
         <button
+          type="button"
           className="border rounded p-1"
           onClick={() => table.setPageIndex(table.getPageCount() - 1)}
           disabled={!table.getCanNextPage()}
@@ -269,10 +269,14 @@ function App() {
       </div>
       <div>{table.getRowModel().rows.length} Rows</div>
       <div>
-        <button onClick={() => rerender()}>Force Rerender</button>
+        <button type="button" onClick={() => rerender()}>
+          Force Rerender
+        </button>
       </div>
       <div>
-        <button onClick={() => refreshData()}>Refresh Data</button>
+        <button type="button" onClick={() => refreshData()}>
+          Refresh Data
+        </button>
       </div>
       <pre>{JSON.stringify(grouping, null, 2)}</pre>
     </div>
